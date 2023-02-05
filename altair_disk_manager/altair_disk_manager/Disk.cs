@@ -1,0 +1,411 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace altair_disk_manager
+{
+    public class Disk
+    {
+        int default_firstdiskstart = 0x4000;
+
+        public int spt { get; set; }    //DEFW  spt; Number of 128-byte records per track
+
+        public int bsh { get; set; }    //DEFB  bsh; Block shift. 3 => 1k, 4 => 2k, 5 => 4k....
+        public int blm { get; set; }    //DEFB  blm; Block mask. 7 => 1k, 0Fh => 2k, 1Fh => 4k...
+        public int exm { get; set; }    //DEFB  exm; Extent mask, see later
+        public int dsm { get; set; }    //DEFW  dsm; (no.of blocks on the disc)-1
+        public int first_dsm { get; set; }
+        public int last_dsm { get; set; }
+
+        public int drw { get; set; }    //DEFW  drm; (no.of directory entries)-1
+
+        public int al0 { get; set; }    //DEFB  al0; Directory allocation bitmap, first byte
+        public int al1 { get; set; }    //DEFB  al1; Directory allocation bitmap, second byte
+        public int cks { get; set; }    //DEFW  cks; Checksum vector size, 0 for a fixed disc
+                                        //         ; No.directory entries/4, rounded up.
+        public int off { get; set; }    //DEFW  off; Offset, number of reserved tracks
+
+        //The directory allocation bitmap is interpreted as: (240 0)
+        //             al0              al1
+        //b7b6b5b4b3b2b1b0 b7b6b5b4b3b2b1b0
+        // 1 1 1 1 0 0 0 0  0 0 0 0 0 0 0 0
+
+        // - ie, in this example, the first 4 blocks of the disc contain the directory.
+
+
+        Byte[] fileData;
+
+        List<FileEntry> FAT = new List<FileEntry>();
+        Dictionary<string, List<FileEntry>> file_entries = new Dictionary<string, List<FileEntry>>();
+
+
+        public byte[] get_sector(int sector)
+        {
+            byte[] sectorData = new byte[137];
+            Buffer.BlockCopy(fileData, sector * 137, sectorData, 0, 137);
+
+            return sectorData;
+        }
+
+        public Disk(DiskImageFormat _diskImageFormat)
+        {
+
+
+            spt = 128;
+            bsh = 5;
+            blm = 31;
+            exm = 1;
+            dsm = 2047;
+            first_dsm = 2043;
+            last_dsm = dsm;
+            drw = 511;
+            al0 = 240;  //0b11110000;
+            al1 = 0;    //0b00000000;
+            cks = 0;
+            off = 0;
+
+            default_firstdiskstart = 0x66C0;
+
+        }
+
+        public void LoadDisk(Byte[] disk, int start)
+        {
+            int size = GetDiskSize();
+
+            start = 0;
+            size = disk.Length;
+            fileData = new byte[size];
+            Buffer.BlockCopy(disk, start, fileData, 0, size);
+        }
+
+
+
+        public static short[] get_al(byte[] fileBytes2, int start)
+        {
+            short[] _al = new short[8];
+            _al[0] = (short)(fileBytes2[start + 0] + (fileBytes2[start + 1] << 8));
+            _al[1] = (short)(fileBytes2[start + 2] + (fileBytes2[start + 3] << 8));
+            _al[2] = (short)(fileBytes2[start + 4] + (fileBytes2[start + 5] << 8));
+            _al[3] = (short)(fileBytes2[start + 6] + (fileBytes2[start + 7] << 8));
+            _al[4] = (short)(fileBytes2[start + 8] + (fileBytes2[start + 9] << 8));
+            _al[5] = (short)(fileBytes2[start + 10] + (fileBytes2[start + 11] << 8));
+            _al[6] = (short)(fileBytes2[start + 12] + (fileBytes2[start + 13] << 8));
+            _al[7] = (short)(fileBytes2[start + 14] + (fileBytes2[start + 15] << 8));
+
+            return _al;
+        }
+
+        public int get_file_bytes(FileEntry f)
+        {
+            int c = 0;
+            List<byte> b = new List<byte>();
+
+            foreach (int ad in f._al)
+            {
+                if (c > 0 && ad == 0)
+                    break;
+                c++;
+            }
+
+            return (c - 1) * 0x1000 + 0x80 * f._rc;
+        }
+
+
+        public List<FileEntry> cmd_ls()
+        {
+
+            FAT.Clear();
+            file_entries.Clear();
+
+            for (int i = 0; i < 64; i++)
+            {
+                int sectorStartByte = 0xC0 + i;
+                DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte));
+                byte[] sectorData = diskSector._data;
+
+                for (int d = 0; d < 128; d += 0x20)
+
+                    if (sectorData[d] != 0xE5)
+                    {
+
+                        FileEntry f = new FileEntry()
+                        {
+                            _entry = d,
+                            _status = sectorData[d + 0],
+
+                            _name = Utils.getStringFromByteArray(sectorData, d + 1, 8),
+                            _ext = Utils.getStringFromByteArray(sectorData, d + 9, 3),
+                            _ex = sectorData[d + 12],
+                            _s1 = 0x0,
+                            _s2 = sectorData[d + 14],
+                            _rc = sectorData[d + 15],
+                            _entry_number = 0,
+                            _num_records = 0,
+                            _size = 0,
+                            _start = 0
+                        };
+                        f._entry_number = ((32 * f._s2) + f._ex) / (exm + 1);
+                        f._num_records = (f._ex & exm) * 128 + f._rc;
+
+                        f._al = get_al(sectorData, d + 16);
+                        f._size = get_file_bytes(f);
+                        f._start = (f._al[0] * 0x1000);
+
+                        string filename = Utils.getStringFromByteArray(sectorData, d + 1, 8) + Utils.getStringFromByteArray(sectorData, d + 9, 3);
+                        if (!file_entries.ContainsKey(filename))
+                        {
+                            FAT.Add(f);
+                            file_entries.Add(filename, new List<FileEntry>(new FileEntry[] { f }));
+                        }
+                        else
+                        {
+                            file_entries[filename].Add(f);
+                        }
+                    }
+            }
+            return FAT;
+        }
+
+
+        public bool DeleteFile(string filename)
+        {
+            if (file_entries.ContainsKey(filename))
+            {
+                foreach (FileEntry fe in file_entries[filename])
+                {
+                    fe._status = 0xE5;
+                }
+
+                return true;
+            }
+            return false;
+        }
+
+        public bool RenameFile(string filename, String name, String ext)
+        {
+            if (file_entries.ContainsKey(filename))
+            {
+                String _name = name.Length > 0 ? name.Substring(0, Math.Min(name.Length, 8)) : "";
+                String _ext = ext.Length > 0 ? ext.Substring(0, Math.Min(ext.Length, 3)) : "";
+
+                _name = _name.PadRight(8);
+                _ext = _ext.PadRight(3);
+
+                foreach (FileEntry fe in file_entries[filename])
+                {
+                    fe._name = _name;
+                    fe._ext = _ext;
+                }
+
+
+                List<FileEntry> value = file_entries[filename];
+                file_entries.Remove(filename);
+                file_entries.Add(_name + _ext, value);
+                return true;
+            }
+            return false;
+        }
+
+        public List<FileEntry> GetFileEntries(String filename)
+        {
+            return file_entries[filename];
+        }
+
+        public List<FileEntry> GetFileEntry(string filename)
+        {
+            if (file_entries.ContainsKey(filename))
+                return file_entries[filename];
+            return null;
+        }
+
+
+        public void SetUser(string filename, int new_user)
+        {
+
+            for (int i = 0; i < file_entries[filename].Count; i++)
+            {
+                file_entries[filename][i]._status = new_user;
+            }
+        }
+
+        public byte[] GetFile(string filename)
+        {
+            int c = 0;
+            List<byte> f = new List<byte>();
+            List<short> blocks = new List<short>();
+            int size = 0;
+            foreach (FileEntry fe in file_entries[filename])
+            {
+                blocks.AddRange(fe._al.Where(p => p > 0));
+                size += fe._size;
+            }
+
+            blocks.Sort();
+
+
+            
+            //int[] sector_swap = { 0x00, 0x11, 0x02, 0x13, 0x04, 0x15, 0x06, 0x17, 0x08, 0x19, 0x0A, 0x1B, 0x0C, 0X1D, 0x0E, 0x1F,
+            //                      0x10, 0x01, 0x12, 0x03, 0x14, 0x05, 0x16, 0x07, 0x18, 0x09, 0x1A, 0x0B, 0x1C, 0x0D, 0x1E, 0x0F};
+
+            for (int b = 0; b < blocks.Count; b += 2)
+            {
+                bool swap = false;
+                int _start_a = default_firstdiskstart + (blocks[b] * 0x890);
+                int sectorStartByte_a = (_start_a / 137);
+
+                if (b == blocks.Count - 1 && b == 0 || blocks[b] % 2 == 1)
+                {
+                    int sectorStartByte_b = (_start_a / 137)-16;
+
+                    for (int a = 0; a < (blocks[b] % 2 == 1? 1: 2); a++)
+                    {
+
+                        for (int j = 0; j < 0x10; j++)
+                        {
+                            if (swap)
+                            {
+                                DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte_b + j));
+                                for (int z = 0; z < 128; z++) f.Add(diskSector._data[z]);
+                                Console.WriteLine((j + 0x10).ToString("X2"));
+                            }
+                            else
+                            {
+                                DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte_a + j));
+                                for (int z = 0; z < 128; z++) f.Add(diskSector._data[z]);
+
+                                Console.WriteLine((j).ToString("X2"));
+                            }
+                            swap = !swap;
+                        }
+                        swap = !swap;
+                    }
+                    b -= 1;
+                }
+                 else  if (b == blocks.Count - 1)
+                {
+                    for (int j = 0; j < 0x10; j++)
+                    {
+
+                        DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte_a + j));
+                        for (int z = 0; z < 128; z++) f.Add(diskSector._data[z]);
+                        Console.WriteLine((j + 0x10).ToString("X2"));
+
+                    }
+                }
+                else
+                {
+                    int _start_b = default_firstdiskstart + (blocks[b + 1] * 0x890);
+                    int sectorStartByte_b = (_start_b / 137);
+
+                    for (int a = 0; a < 2; a++)
+                    {
+
+                        for (int j = 0; j < 0x10; j++)
+                        {
+                            if (swap)
+                            {
+                                DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte_b + j));
+                                for (int z = 0; z < 128; z++) f.Add(diskSector._data[z]);
+                                Console.WriteLine((j + 0x10).ToString("X2"));
+                            }
+                            else
+                            {
+                                DiskSystemSector diskSector = new DiskSystemSector(get_sector(sectorStartByte_a + j));
+                                for (int z = 0; z < 128; z++) f.Add(diskSector._data[z]);
+
+                                Console.WriteLine((j).ToString("X2"));
+                            }
+                            swap = !swap;
+                        }
+                        swap = !swap;
+                    }
+
+                }
+
+                c++;
+            }
+
+
+            int i = Math.Min(f.Count - 1, size - 1);
+            while (i > 0 && (f[i] == 0x0 || f[i] == 0x1A || f[i] == 0xe5))
+                --i;
+            // now foo[i] is the last non-zero byte
+            byte[] bar = new byte[i + 1];
+            Array.Copy(f.ToArray(), bar, i + 1);
+
+            return bar;
+        }
+
+
+        public int GetDiskSize()
+        {
+            return (dsm + 1) * 0x1000;
+        }
+
+        public int GetDiskTotalBlocks()
+        {
+            return (GetDiskSize() - default_firstdiskstart) / 0x1000;
+        }
+
+        public List<short> GetFreeBlocks()
+        {
+            List<short> ret = new List<short>();
+            List<short> used = new List<short>();
+
+
+            int total_blocks = GetDiskTotalBlocks();
+
+            foreach (List<FileEntry> lfe in file_entries.Values)
+            {
+                foreach (FileEntry fe in lfe)
+                {
+                    if (fe._status != 0xE5)
+                    {
+                        foreach (short s in fe._al)
+                        {
+                            if (s > 0)
+                                used.Add(s);
+                        }
+                    }
+                }
+            }
+
+            for (short i = 4; i <= (total_blocks + 4); i++)
+            {
+                if (!used.Contains(i))
+                    ret.Add(i);
+            }
+
+            return ret;
+        }
+
+
+        public List<short> GetFreeDirEntries()
+        {
+            List<short> ret = new List<short>();
+            List<short> used = new List<short>();
+
+
+            foreach (List<FileEntry> lfe in file_entries.Values)
+            {
+                foreach (FileEntry fe in lfe)
+                {
+                    if (fe._status != 0xE5)
+                    {
+                        used.Add((short)(fe._entry / 0x20));
+                    }
+                }
+            }
+
+            for (short i = 0; i <= drw; i++)
+            {
+                if (!used.Contains(i))
+                    ret.Add(i);
+            }
+
+            return ret;
+        }
+    }
+}
