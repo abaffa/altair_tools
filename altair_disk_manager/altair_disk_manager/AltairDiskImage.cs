@@ -586,13 +586,15 @@ namespace altair_disk_manager
             for (int i = start_index; i < _disk_type.disk_num_directories(); i++)
             {
                 // Is this the first extent for a file? 
-                if (dir_table[i].valid &&
-                    is_first_extent(dir_table[i]))
+                //if (dir_table[i].valid && is_first_extent(dir_table[i]))
+                if (sorted_dir_table[i].valid && is_first_extent(sorted_dir_table[i]))
                 {
                     // If filename matches, return it 
-                    if (filename_equals(full_filename.Trim(), dir_table[i].full_filename.Trim(), wildcards) == 0)
+                    //if (filename_equals(full_filename.Trim(), dir_table[i].full_filename.Trim(), wildcards) == 0)
+                    if (filename_equals(full_filename.Trim(), sorted_dir_table[i].full_filename.Trim(), wildcards) == 0)
                     {
-                        return dir_table[i];
+                        //return dir_table[i];
+                        return sorted_dir_table[i];
                     }
                 }
             }
@@ -893,6 +895,12 @@ namespace altair_disk_manager
             sorted_dir_table = sorted_dir_table.Where(p => p.full_filename != null).OrderBy(p => p.full_filename).ThenBy(p => p.extent_nr)
                 .Concat(sorted_dir_table.Where(p => p.full_filename == null)).ToArray();
 
+            for(int i =0; i < sorted_dir_table.Length; i++)
+            {
+                if (sorted_dir_table[i] != null)
+
+                    Console.WriteLine("{0}\t{1}", sorted_dir_table[i].valid, sorted_dir_table[i].full_filename);
+            }
             // link related directory entries 
             // No need to check last entry, it can't be related to anything 
             for (int i = 0; i < _disk_type.disk_num_directories() - 1; i++)
@@ -905,6 +913,7 @@ namespace altair_disk_manager
                     // Check if there are more extents for this file 
                     if (next_entry.full_filename != null && entry.full_filename.ToString() == next_entry.full_filename.ToString())
                     {
+                        Console.WriteLine("{0}\t{1}", entry.full_filename, next_entry.full_filename);
                         // If this entry is a full extent, and the next entry has an
                         //an entr nr +1
                         entry.next_entry = next_entry;
@@ -958,6 +967,36 @@ namespace altair_disk_manager
             Console.Write("\n");
         }
 
+        public void cmd_chuser(String filename, int newuser)
+        {
+            change_user_file(filename, newuser);
+        }
+
+        void change_user_file(string cpm_filename, int newuser)
+        {
+
+            if (newuser < 0 || newuser > 15)
+                return;
+
+                cpm_dir_entry entry = find_dir_by_filename(cpm_filename, null, false);
+            if (entry == null)
+            {
+                Console.WriteLine("Error renaming {0}", cpm_filename);
+                return;
+            }
+            
+
+            // Set user on all directory entries for this file to "new user" 
+            do
+            {
+                entry.raw_entry.user = (byte)newuser;
+
+                write_dir_entry(entry);
+            } while ((entry = entry.next_entry) != null);
+        }
+
+
+
         public bool cmd_rename(string from, string to)
         {
             return rename_file(from, to);
@@ -974,7 +1013,7 @@ namespace altair_disk_manager
 
             string valid_filename = validate_cpm_filename(new_filename);
 
-            // Set user on all directory entries for this file to "DELETED" 
+            // rename all directory entries for this file
             do
             {
                 copy_filename(entry.raw_entry, valid_filename);

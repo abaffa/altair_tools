@@ -146,7 +146,7 @@ namespace altair_disk_manager
                 lvi.SubItems.Add(new ListViewItem.ListViewSubItem() { Name = "Size", Text = size });
                 lvi.SubItems.Add(new ListViewItem.ListViewSubItem() { Name = "Extension", Text = f._ext.Trim() });
 
-                
+
                 lvi.SubItems.Add(new ListViewItem.ListViewSubItem() { Name = "_size", Text = num.ToString() });
                 /*
                 lvi.SubItems.Add(new ListViewItem.ListViewSubItem() { Name = "_start", Text = f._start.ToString("X4") });
@@ -1157,30 +1157,31 @@ namespace altair_disk_manager
 
         private void toolStripComboBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (selectedUser > -1 && toolStripComboBox1.SelectedIndex != -1)
+            if (listView1.SelectedItems.Count == 1 && selectedUser > -1 &&
+                toolStripComboBox1.SelectedIndex != -1 && selectedUser != toolStripComboBox1.SelectedIndex)
             {
 
 
-                if (listView1.SelectedItems.Count == 1)
+                //diskImage.cmd_chuser((string)listView1.SelectedItems[0].Tag, toolStripComboBox1.SelectedIndex);
+                diskImage2.cmd_chuser((string)listView1.SelectedItems[0].Text, toolStripComboBox1.SelectedIndex);
+
+                cmd_ls();
+
+                contextMenuStrip1.Hide();
+            }
+            else if (listView1.SelectedItems.Count > 1 &&
+                toolStripComboBox1.SelectedIndex != -1)
+            {
+                foreach (ListViewItem item in listView1.SelectedItems)
                 {
-
-                    diskImage.cmd_chuser((string)listView1.SelectedItems[0].Tag, toolStripComboBox1.SelectedIndex);
-
-                    cmd_ls();
-
-                    contextMenuStrip1.Hide();
+                    //diskImage.cmd_chuser((string)item.Tag, toolStripComboBox1.SelectedIndex);
+                    diskImage2.cmd_chuser((string)item.Text, toolStripComboBox1.SelectedIndex);
                 }
-                else if (listView1.SelectedItems.Count > 1)
-                {
-                    foreach (ListViewItem item in listView1.SelectedItems)
-                    {
-                        diskImage.cmd_chuser((string)item.Tag, toolStripComboBox1.SelectedIndex);
-                    }
 
-                    cmd_ls();
+                cmd_ls();
 
-                    contextMenuStrip1.Hide();
-                }
+                contextMenuStrip1.Hide();
+
             }
         }
 
@@ -1452,7 +1453,25 @@ namespace altair_disk_manager
             }
         }
 
+        private void contextMenuStrip1_VisibleChanged(object sender, EventArgs e)
+        {
+            int _selected_user = -1;
 
+
+            if (listView1.SelectedItems.Count == 1)
+            {
+                try
+                {
+                    _selected_user = int.Parse(listView1.SelectedItems[0].SubItems[1].Text, System.Globalization.NumberStyles.HexNumber);
+                    selectedUser = _selected_user;
+                }
+                catch (Exception ex)
+                {
+                }
+
+            }
+            toolStripComboBox1.SelectedIndex = _selected_user;
+        }
     }
 }
 

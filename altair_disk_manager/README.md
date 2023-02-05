@@ -14,10 +14,8 @@ To read the CFCard/SDCard it's necessary to run as administrator to have disk ra
 
 PS: This program uses the RawDiskLib.dll from Visual Studio 2017 to access (read/write) raw data from removable disks. As it has that raw disk access feature, some antivirus programs are erroneously reporting it as malware. This is a false positive and should be ignored! Btw the raw disk access only is available and accessible if the program is run with administrative privileges.
 
-* * * The images bellow are from original project and I will update it soon. Anyway, it's exactly the same interface * * *
-
 ![cpm_dm1](_images/cpm_dm1.png)
-
+	
 ![cpm_dm2](_images/cpm_dm2.png)
 
 ![cpm_dm3](_images/cpm_dm3.png)
