@@ -115,6 +115,9 @@ namespace altair_disk_manager
 
                 imageSizeToolStripMenuItem.DropDownItems.Add(x);
 
+                ToolStripMenuItem y = new ToolStripMenuItem(n);
+                convertToToolStripMenuItem.DropDownItems.Add(y);
+                y.Click += convertToolStripMenuItem_Click;
             }
 
 
@@ -1049,6 +1052,72 @@ namespace altair_disk_manager
             set_disk_format(((ToolStripMenuItem)sender).Text);
 
         }
+
+
+        private void convertToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            /*
+            mBToolStripMenuItem1.Checked = false;
+            mBToolStripMenuItem.Checked = true;
+            romWBWToolStripMenuItem.Checked = false;
+            diskImage.DiskImageFormat = DiskImageFormat._64MB_Searle;
+
+            newImageToolStripMenuItem.Text = "New Image(64MB)";
+
+            IniFile ini = new IniFile(System.Environment.CurrentDirectory + "\\" + "config.ini");
+            ini.IniWriteValue("general", "disk_image_size", "64");
+            */
+            Dictionary<string, byte[]> files = new Dictionary<string, byte[]>();
+
+            int totalfiles = listView1.Items.Count;
+
+
+            toolStripProgressBar1.Minimum = 0;
+            toolStripProgressBar1.Maximum = totalfiles;
+            toolStripProgressBar1.Visible = true;
+
+
+            for (int i = 0; i < totalfiles; i++)
+            {
+                ListViewItem item = listView1.Items[i];
+
+                String filename = item.Text;
+                byte[] data = diskImage2.GetFile(filename);
+                files.Add(filename, data);
+
+                Application.DoEvents();
+
+                toolStripProgressBar1.Value = i;
+            }
+
+            toolStripProgressBar1.Visible = false;
+
+            set_disk_format(((ToolStripMenuItem)sender).Text);
+            newImageToolStripMenuItem_Click(null, null);
+
+
+            toolStripProgressBar1.Minimum = 0;
+            toolStripProgressBar1.Maximum = totalfiles;
+            toolStripProgressBar1.Visible = true;
+
+
+            int j = 0;
+            foreach(String filename in files.Keys)
+            {
+                byte[] data = files[filename];
+
+                diskImage2.cmd_mkbin(filename, data);
+                Application.DoEvents();
+
+                toolStripProgressBar1.Value = j++;
+            }
+
+            toolStripProgressBar1.Visible = false;
+
+            cmd_ls();
+
+        }
+
 
         private void set_disk_format(String format_name)
         {
