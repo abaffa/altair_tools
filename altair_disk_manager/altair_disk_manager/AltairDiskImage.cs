@@ -46,7 +46,7 @@ namespace altair_disk_manager
     public class AltairDiskImage
     {
 
-        public static bool VERBOSE = true;
+        public static bool VERBOSE = false;
 
 
         public const UInt16 MAX_SECT_SIZE = 256;     /* Maximum size of a disk sector read */
@@ -56,98 +56,9 @@ namespace altair_disk_manager
         public const UInt16 MAX_ALLOCS = 2048;   /* Maximum size of allocation table */
                                                  /* 8MB FDC+ type uses 2046 blocks */
         public const byte DIR_ENTRY_LEN = 32;      /* Length of a single directory entry (extent)*/
-        public const byte ALLOCS_PER_EXT = 16;     /* Number of allocations in a directory entry (extent) */
+
         public const byte RECORD_MAX = 128;        /* Max records per directory entry (extent) */
 
-        public const byte FILENAME_LEN = 8;
-        public const byte TYPE_LEN = 3;
-        public const byte FULL_FILENAME_LEN = (FILENAME_LEN + TYPE_LEN + 2);
-        public const byte MAX_USER = 15;
-        public const byte DELETED_FLAG = 0xe5;
-
-
-
-
-
-        /* On-disk representation of a directory entry */
-        public class raw_dir_entry
-        {
-            public byte user;                   /* User (0-15). E5 = Deleted */
-            public byte[] filename = new byte[FILENAME_LEN];
-            public byte[] type = new byte[TYPE_LEN];
-            public byte extent_l;               /* Extent number. */
-            public byte reserved;
-            public byte extent_h;               /* Not used */
-            public byte num_records;            /* Number of sectors used for this directory entry */
-            public byte[] allocation = new byte[ALLOCS_PER_EXT]; /* List of 2K Allocations used for the file */
-
-            public void debug()
-            {
-                Console.WriteLine((int)user);
-                Console.WriteLine(System.Text.Encoding.Default.GetString(filename));
-                Console.WriteLine(System.Text.Encoding.Default.GetString(type));
-                Console.WriteLine((int)extent_l);
-                Console.WriteLine((int)reserved);
-                Console.WriteLine((int)extent_h);
-                Console.WriteLine((int)num_records);
-
-
-            }
-
-            public byte[] ToByteArray()
-            {
-                byte[] ret = new byte[32];
-
-                ret[0] = user;
-                ret[1] = filename[0];
-
-                ret[2] = filename[1];
-                ret[3] = filename[2];
-                ret[4] = filename[3];
-                ret[5] = filename[4];
-                ret[6] = filename[5];
-                ret[7] = filename[6];
-                ret[8] = filename[7];
-
-                ret[9] = type[0];
-                ret[10] = type[1];
-                ret[11] = type[2];
-
-                ret[12] = extent_l;
-                ret[13] = reserved;
-                ret[14] = extent_h;
-                ret[15] = num_records;
-
-                for (int i = 0; i < ALLOCS_PER_EXT; i++)
-                    ret[16 + i] = allocation[i];
-
-
-
-                return ret;
-            }
-        }
-
-
-        /* Sanitised version of a directory entry */
-        public class cpm_dir_entry
-        {
-            public int index;              /* Zero based directory number */
-            public bool valid;              /* Valid if used for a file */
-            public raw_dir_entry raw_entry;            /* On-disk representation */
-            public int extent_nr;
-            public int user;
-            public string filename;
-            public string type;
-            public char[] attribs = new char[3];            /* R - Read-Only, W - Read-Write, S - System */
-            public string full_filename; /* filename.ext format */
-            public int num_records;
-            public int num_allocs;
-            public int[] allocation = new int[ALLOCS_PER_EXT];     /* Only 8 of the 16 are used. As the 2-byte allocs 
-													 * in the raw_entry are converted to a single value */
-            public cpm_dir_entry next_entry; /* pointer to next directory entry if multiple */
-
-
-        }
 
 
         cpm_dir_entry[] dir_table;          /* Directory entires in order read from "disk" */
@@ -158,7 +69,7 @@ namespace altair_disk_manager
 
 
 
-        Byte[] fileData;
+
 
 
         List<FileEntry> FAT = new List<FileEntry>();
@@ -184,7 +95,7 @@ namespace altair_disk_manager
                         progressBar.Visible = true;
                     }
 
-                    fileData = new byte[fi.Length];
+                    byte[] fileData = new byte[fi.Length];
 
                     using (BinaryReader b = new BinaryReader(
                     File.Open(fileName, FileMode.Open)))
@@ -233,6 +144,9 @@ namespace altair_disk_manager
                         _disk_type = Disk_Type.disk_set_type(Disk_Type.disk_get_type((Disk_Type.disk_format)_format));
                     }
 
+
+                    _disk_type.fileData = fileData;
+
                     // Initial allocation table 
                     for (int i = 0; i < _disk_type.da; ++i)
                         alloc_table[i] = 1;
@@ -254,6 +168,14 @@ namespace altair_disk_manager
             return false;
         }
 
+
+        public Disk_Type.disk_format GetDiskImageType()
+        {
+            int _format = Disk_Type.disk_detect_type(_disk_type.fileData.Length);
+
+            return (Disk_Type.disk_format)_format;
+        }
+
         public bool SaveImageFile(string fileName, ToolStripProgressBar progressBar = null)
         {
             try
@@ -261,16 +183,16 @@ namespace altair_disk_manager
                 if (progressBar != null)
                 {
                     progressBar.Minimum = 0;
-                    progressBar.Maximum = (int)fileData.Length;
+                    progressBar.Maximum = (int)_disk_type.fileData.Length;
                     progressBar.Visible = true;
                 }
 
 
                 using (BinaryWriter b = new BinaryWriter(File.Open(fileName, FileMode.Create)))
                 {
-                    for (int pos = 0; pos < fileData.Length; pos++)
+                    for (int pos = 0; pos < _disk_type.fileData.Length; pos++)
                     {
-                        b.Write(fileData[pos]);
+                        b.Write(_disk_type.fileData[pos]);
                         if (progressBar != null)
                         {
                             if (pos % 1000000 == 0)
@@ -437,7 +359,7 @@ namespace altair_disk_manager
         {
             List<byte> file_data = new List<byte>();
 
-            sector_data = new byte[MAX_SECT_SIZE];
+            _disk_type.reset_sector_buffer();
             int data_len = _disk_type.disk_data_sector_len();
             while (dir_entry != null)
             {
@@ -452,7 +374,7 @@ namespace altair_disk_manager
                         break;
 
                     // get data for this allocation and record number 
-                    read_sector(alloc, recnr);
+                    _disk_type.read_sector(alloc, recnr);
 
                     // If in auto-detect mode or if in text_mode and this is the last sector 
                     if ((text_mode == -1) ||
@@ -464,7 +386,7 @@ namespace altair_disk_manager
                             //where "text" means 7 bit only
                             if (text_mode == -1)
                             {
-                                if ((sector_data[i] & 0x80) > 0)
+                                if ((_disk_type.sector_data[i] & 0x80) > 0)
                                 {
                                     // not "text", so set to binary mode 
                                     text_mode = 0;
@@ -474,7 +396,7 @@ namespace altair_disk_manager
                             // If in text mode and on last block, then check for ^Z for EOF 
                             //Set data_len to make sure that data stop writing prior to first ^ Z
                             if (text_mode > 0 && (recnr == num_records - 1) &&
-                            sector_data[i] == 0x1a)
+                            _disk_type.sector_data[i] == 0x1a)
                             {
                                 data_len = i;
                                 break;
@@ -485,7 +407,7 @@ namespace altair_disk_manager
                     if (recnr <= num_records - 1)
                         // write out current sector 
                         for (int j = 0; j < data_len; j++)
-                            file_data.Add(sector_data[j]);
+                            file_data.Add(_disk_type.sector_data[j]);
                 }
                 dir_entry = dir_entry.next_entry;
             }
@@ -674,86 +596,11 @@ namespace altair_disk_manager
 
 
 
-        //Convert allocation and record numbers into track and sector numbers
-
-        public void convert_track_sector(int allocation, int record)
-        {
-            // Find the number of records this allocation and record number equals 
-            //Each record = 1 sector.Divide number of records by number of sectors per track to get the track.
-            //This works because we enforce that each sector is 128 bytes and each record is 128 bytes.
-
-            //Note: For some disks the block size is not a multiple of the sectors/ track, so can't just
-            //calculate allocs / track here.
-
-
-            track = (allocation * _disk_type.disk_recs_per_alloc() + (record % _disk_type.disk_recs_per_alloc())) /
-            _disk_type.disk_sectors_per_track() + _disk_type.disk_reserved_tracks();
-
-            int logical_sector =
-                    (allocation * _disk_type.disk_recs_per_alloc() + (record % _disk_type.disk_recs_per_alloc())) %
-                    _disk_type.disk_sectors_per_track();
-
-            if (VERBOSE)
-                Console.Write("ALLOCATION[{0}], RECORD[{1}], LOGICAL[{2:x}], ", allocation, record, logical_sector);
-
-            // Need to "skew" the logical sector into a physical sector 
-            sector = _disk_type.disk_skew_sector(track, logical_sector);
-        }
-
-
-        int track;
-        int sector;
-        int offset;
-        byte[] sector_data;
-        // Read an allocation / record from disk.
-        void read_sector(int alloc_num, int rec_num)
-        {
-
-
-            convert_track_sector(alloc_num, rec_num);
-            offset = track * _disk_type.disk_track_len() + (sector - 1) * _disk_type.disk_sector_len();
-            // For 8" floppy format data is offset from start of sector 
-            offset += _disk_type.disk_off_data(track);
-
-            if (VERBOSE)
-                Console.Write("Reading from TRACK[{0}], SECTOR[{1}], OFFSET[{2:x}]\n", track, sector, offset);
-
-
-            Buffer.BlockCopy(fileData, offset,
-               sector_data, 0,
-                   _disk_type.disk_data_sector_len());
-
-            /*
-            if (lseek(fd, offset, SEEK_SET) < 0)
-            {
-                error_exit(errno, "read_sector: Error seeking");
-            }
-            if (read(fd, buffer, disk_data_sector_len()) < 0)
-            {
-                error_exit(errno, "read_sector: Error on read");
-            }
-            */
-            //Console.WriteLine(System.Text.Encoding.Default.GetString(sector_data));
-
-
-        }
 
 
 
-        //Convert a raw allocation into the int representing that allocation
-        int get_raw_allocation(raw_dir_entry raw, int entry_nr)
-        {
-            if (_disk_type.disk_total_allocs() <= 256)
-            {
-                // an 8 bit allocation number 
-                return raw.allocation[entry_nr];
-            }
-            else
-            {
-                // a 16 bit allocation number. Low byte first 
-                return raw.allocation[entry_nr] | (raw.allocation[entry_nr + 1] << 8);
-            }
-        }
+
+
 
 
         // Convert each cpm directory entry (extent) into an structure that is
@@ -767,11 +614,11 @@ namespace altair_disk_manager
 
             entry.filename = System.Text.Encoding.Default.GetString(raw.filename);
 
-            if (entry.filename.Length > FILENAME_LEN)
-                entry.filename = entry.filename.Substring(0, FILENAME_LEN);
+            if (entry.filename.Length > raw_dir_entry.FILENAME_LEN)
+                entry.filename = entry.filename.Substring(0, raw_dir_entry.FILENAME_LEN);
 
             entry.type = "";
-            for (int i = 0; i < TYPE_LEN; i++)
+            for (int i = 0; i < raw_dir_entry.TYPE_LEN; i++)
             {
                 // remove the top bit as it encodes file attributes
                 entry.type += (char)(raw.type[i] & 0x7f);
@@ -793,9 +640,9 @@ namespace altair_disk_manager
             }
             entry.num_records = raw.num_records;
             int num_allocs = 0;
-            for (int i = 0; i < ALLOCS_PER_EXT; i++)
+            for (int i = 0; i < raw_dir_entry.ALLOCS_PER_EXT; i++)
             {
-                int alloc_nr = get_raw_allocation(entry.raw_entry, i);
+                int alloc_nr = _disk_type.get_raw_allocation(entry.raw_entry, i);
                 if (_disk_type.disk_total_allocs() <= 256)
                 {
                     // an 8 bit allocation number 
@@ -823,7 +670,8 @@ namespace altair_disk_manager
         // Related directory entries are linked through next_entry.
         void load_directory_table()
         {
-            sector_data = new byte[MAX_SECT_SIZE];
+            _disk_type.reset_sector_buffer();
+
             dir_table = new cpm_dir_entry[_disk_type.disk_num_directories()];
             sorted_dir_table = new cpm_dir_entry[_disk_type.disk_num_directories()];
 
@@ -834,7 +682,7 @@ namespace altair_disk_manager
                 int allocation = sect_nr / _disk_type.disk_recs_per_alloc();
                 int record = (sect_nr % _disk_type.disk_recs_per_alloc());
 
-                read_sector(allocation, record);
+                _disk_type.read_sector(allocation, record);
 
                 for (int dir_nr = 0; dir_nr < _disk_type.disk_dirs_per_sector(); dir_nr++)
                 {
@@ -854,26 +702,26 @@ namespace altair_disk_manager
                     // colocar os entries aqui
 
                     int d = (DIR_ENTRY_LEN * dir_nr);
-                    entry.raw_entry.user = sector_data[d + 0];
+                    entry.raw_entry.user = _disk_type.sector_data[d + 0];
 
-                    Buffer.BlockCopy(sector_data, d + 1, entry.raw_entry.filename, 0, 8);
+                    Buffer.BlockCopy(_disk_type.sector_data, d + 1, entry.raw_entry.filename, 0, 8);
 
-                    Buffer.BlockCopy(sector_data, d + 9, entry.raw_entry.type, 0, 3);
+                    Buffer.BlockCopy(_disk_type.sector_data, d + 9, entry.raw_entry.type, 0, 3);
 
-                    entry.raw_entry.extent_l = sector_data[d + 12];
-                    entry.raw_entry.reserved = sector_data[d + 13];
-                    entry.raw_entry.extent_h = sector_data[d + 14];
-                    entry.raw_entry.num_records = sector_data[d + 15];
-                    Buffer.BlockCopy(sector_data, d + 16, entry.raw_entry.allocation, 0, ALLOCS_PER_EXT);
+                    entry.raw_entry.extent_l = _disk_type.sector_data[d + 12];
+                    entry.raw_entry.reserved = _disk_type.sector_data[d + 13];
+                    entry.raw_entry.extent_h = _disk_type.sector_data[d + 14];
+                    entry.raw_entry.num_records = _disk_type.sector_data[d + 15];
+                    Buffer.BlockCopy(_disk_type.sector_data, d + 16, entry.raw_entry.allocation, 0, raw_dir_entry.ALLOCS_PER_EXT);
 
                     sorted_dir_table[index] = entry;
 
-                    if (entry.raw_entry.user <= MAX_USER)
+                    if (entry.raw_entry.user <= raw_dir_entry.MAX_USER)
                     {
                         raw_to_cpmdir(entry);
 
                         // Mark off the used allocations 
-                        for (int alloc_nr = 0; alloc_nr < ALLOCS_PER_EXT; alloc_nr++)
+                        for (int alloc_nr = 0; alloc_nr < raw_dir_entry.ALLOCS_PER_EXT; alloc_nr++)
                         {
                             int alloc = entry.allocation[alloc_nr];
 
@@ -895,7 +743,7 @@ namespace altair_disk_manager
             sorted_dir_table = sorted_dir_table.Where(p => p.full_filename != null).OrderBy(p => p.full_filename).ThenBy(p => p.extent_nr)
                 .Concat(sorted_dir_table.Where(p => p.full_filename == null)).ToArray();
 
-            for(int i =0; i < sorted_dir_table.Length; i++)
+            for (int i = 0; i < sorted_dir_table.Length; i++)
             {
                 if (sorted_dir_table[i] != null)
 
@@ -937,9 +785,9 @@ namespace altair_disk_manager
                         entry.user, entry.filename, entry.type,
                         entry.attribs,
                         entry.extent_nr, entry.num_records);
-                    for (int j = 0; i < ALLOCS_PER_EXT / 2; j++)    // Only 8 of the 16 entries are used 
+                    for (int j = 0; i < raw_dir_entry.ALLOCS_PER_EXT / 2; j++)    // Only 8 of the 16 entries are used 
                     {
-                        if (j < ALLOCS_PER_EXT / 2 - 1)
+                        if (j < raw_dir_entry.ALLOCS_PER_EXT / 2 - 1)
                         {
                             Console.Write("{0},", entry.allocation[j]);
                         }
@@ -978,13 +826,13 @@ namespace altair_disk_manager
             if (newuser < 0 || newuser > 15)
                 return;
 
-                cpm_dir_entry entry = find_dir_by_filename(cpm_filename, null, false);
+            cpm_dir_entry entry = find_dir_by_filename(cpm_filename, null, false);
             if (entry == null)
             {
                 Console.WriteLine("Error renaming {0}", cpm_filename);
                 return;
             }
-            
+
 
             // Set user on all directory entries for this file to "new user" 
             do
@@ -1032,7 +880,7 @@ namespace altair_disk_manager
         // Copy file from host to Altair CPM disk image 
         void copy_to_cpm(string cpm_filename, byte[] data)
         {
-            sector_data = new byte[MAX_SECT_SIZE];
+            _disk_type.reset_sector_buffer();
             string valid_filename = validate_cpm_filename(cpm_filename);
 
             if (cpm_filename.ToLower() != valid_filename.ToLower())
@@ -1042,6 +890,7 @@ namespace altair_disk_manager
             if (find_dir_by_filename(valid_filename, null, false) != null)
             {
                 Console.WriteLine("Error creating file {0}", valid_filename);
+                return;
             }
 
             int rec_nr = 0;
@@ -1053,7 +902,7 @@ namespace altair_disk_manager
 
             // Fill the sector with Ctrl-Z (EOF) in case not fully filled by read from host
             Buffer.BlockCopy(Enumerable.Repeat((byte)0x1a, _disk_type.disk_data_sector_len()).ToArray(), 0,
-                sector_data, 0, _disk_type.disk_data_sector_len());
+                _disk_type.sector_data, 0, _disk_type.disk_data_sector_len());
 
             int src_offset = 0;
 
@@ -1063,7 +912,7 @@ namespace altair_disk_manager
                 int current_len = Math.Min(_disk_type.disk_data_sector_len(), (data.Length - src_offset));
 
                 Buffer.BlockCopy(data, src_offset,
-                sector_data, 0, current_len);
+                _disk_type.sector_data, 0, current_len);
 
                 src_offset += _disk_type.disk_data_sector_len();
 
@@ -1081,6 +930,7 @@ namespace altair_disk_manager
                     if (dir_entry == null)
                     {
                         Console.WriteLine("Error writing {0}: No free directory entries", cpm_filename);
+                        return;
                     }
                     // Initialise the directory entry 
                     dir_entry.raw_entry = new raw_dir_entry();
@@ -1096,24 +946,25 @@ namespace altair_disk_manager
                     {
                         // No free allocations! 
                         // write out directory entry(if it has any allocations) before exit
-                        if (get_raw_allocation(dir_entry.raw_entry, 0) != 0)
+                        if (_disk_type.get_raw_allocation(dir_entry.raw_entry, 0) != 0)
                         {
                             raw_to_cpmdir(dir_entry);
                             write_dir_entry(dir_entry);
                         }
                         Console.WriteLine("Error writing {0}: No free allocations", valid_filename);
+                        return;
                     }
-                    set_raw_allocation(dir_entry.raw_entry, nr_allocs, allocation);
+                    _disk_type.set_raw_allocation(dir_entry.raw_entry, nr_allocs, allocation);
                     nr_allocs++;
                 }
                 dir_entry.raw_entry.num_records = (byte)((rec_nr % RECORD_MAX) + 1);
                 dir_entry.raw_entry.extent_l = (byte)(nr_extents % 32);
                 dir_entry.raw_entry.extent_h = (byte)(nr_extents / 32);
 
-                write_sector(allocation, rec_nr);
+                _disk_type.write_sector(allocation, rec_nr);
 
                 Buffer.BlockCopy(Enumerable.Repeat((byte)0x1a, _disk_type.disk_data_sector_len()).ToArray(), 0,
-                    sector_data, 0, _disk_type.disk_data_sector_len());
+                    _disk_type.sector_data, 0, _disk_type.disk_data_sector_len());
 
                 rec_nr++;
 
@@ -1128,31 +979,6 @@ namespace altair_disk_manager
         }
 
 
-        // Write an newly formatted sector
-        // Must contain all sector data, including checksum, stop bytes etc.
-        void write_raw_sector(int track, int sector)
-        {
-            // offset to start of sector 
-            int sector_offset = track * _disk_type.disk_track_len() + (sector - 1) * _disk_type.disk_sector_len();
-
-            if (VERBOSE)
-                Console.Write("Writing to TRACK[{0}], SECTOR[{1}], OFFSET[{2}] (RAW)\n", track, sector, sector_offset);
-
-            // write the data 
-            /*
-            if (lseek(fd, sector_offset, SEEK_SET) < 0)
-            {
-                error_exit(errno, "write_raw_sector: Error seeking");
-            }
-            if (write(fd, buffer, disk_sector_len()) < 0)
-            {
-                error_exit(errno, "write_raw_sector: Error on write");
-            }
-            */
-            Buffer.BlockCopy(sector_data, 0,
-                fileData, sector_offset,
-                _disk_type.disk_data_sector_len());
-        }
 
 
 
@@ -1173,7 +999,7 @@ namespace altair_disk_manager
             // Set user on all directory entries for this file to "DELETED" 
             do
             {
-                entry.raw_entry.user = DELETED_FLAG;
+                entry.raw_entry.user = raw_dir_entry.DELETED_FLAG;
                 write_dir_entry(entry);
             } while ((entry = entry.next_entry) != null);
         }
@@ -1252,7 +1078,7 @@ namespace altair_disk_manager
 
         void write_dir_entry(cpm_dir_entry entry)
         {
-            sector_data = new byte[MAX_SECT_SIZE];
+            _disk_type.reset_sector_buffer();
 
             int allocation = entry.index / _disk_type.disk_dirs_per_alloc();
             int record = entry.index / _disk_type.disk_dirs_per_sector();
@@ -1266,100 +1092,21 @@ namespace altair_disk_manager
 
                 byte[] raw_byte_entry = dir_table[start_index + i].raw_entry.ToByteArray();
 
-                Buffer.BlockCopy(raw_byte_entry, 0, sector_data, i * DIR_ENTRY_LEN, DIR_ENTRY_LEN);
+                Buffer.BlockCopy(raw_byte_entry, 0, _disk_type.sector_data, i * DIR_ENTRY_LEN, DIR_ENTRY_LEN);
             }
 
-            write_sector(allocation, record);
+            _disk_type.write_sector(allocation, record);
         }
 
 
         public byte[] get_sector()
         {
-            return fileData;
+            return _disk_type.fileData;
         }
 
 
 
 
-        // Write an allocation / record to disk
-
-        void write_sector(int alloc_num, int rec_num)
-        {
-
-            char[] checksum_buf = new char[7];       // additional checksum data for track 6 onwards 
-
-            convert_track_sector(alloc_num, rec_num);
-
-            // offset to start of sector 
-            int sector_offset = track * _disk_type.disk_track_len() + (sector - 1) * _disk_type.disk_sector_len();
-
-            // Get the offset to start of data, relative to the start of sector 
-            int data_offset = sector_offset + _disk_type.disk_off_data(track);
-
-            if (VERBOSE)
-                Console.Write("Writing to TRACK[{0}], SECTOR[{0}], OFFSET[{0}]\n", track, sector, data_offset);
-
-            // write the data 
-            /*
-            if (lseek(fd, data_offset, SEEK_SET) < 0)
-            {
-                error_exit(errno, "write_sector: Error seeking");
-            }
-            if (write(fd, buffer, disk_data_sector_len()) < 0)
-            {
-                error_exit(errno, "write_sector: Error on write");
-            }
-            */
-
-            Buffer.BlockCopy(sector_data, 0,
-        fileData, data_offset,
-        _disk_type.disk_data_sector_len());
-
-            if (_disk_type.disk_csum_method(track) > 0)
-            {
-                // calculate the checksum and offset if required 
-                short csum = _disk_type.calc_checksum(sector_data, 0);
-                int csum_offset = sector_offset + _disk_type.disk_off_csum(track);
-
-                // For track 6 onwards, some non-data bytes are added to the checksum 
-                if (track >= 6)
-                {
-                    /*
-                    if (lseek(fd, sector_offset, SEEK_SET) < 0)
-                    {
-                        error_exit(errno, "write_sector: Error seeking");
-                    }
-
-                    if (read(fd, checksum_buf, 7) < 0)
-                    {
-                        error_exit(errno, "write_sector: Error on read checksum bytes");
-                    }
-                    */
-                    Buffer.BlockCopy(fileData, sector_offset,
-                        checksum_buf, 0, 7);
-
-                    if (_disk_type.disk_csum_method(track) > 0)
-
-                        csum += (short)checksum_buf[2];
-                    csum += (short)checksum_buf[3];
-                    csum += (short)checksum_buf[5];
-                    csum += (short)checksum_buf[6];
-                }
-
-                // write the checksum 
-                /*
-                if (lseek(fd, csum_offset, SEEK_SET) < 0)
-                {
-                    error_exit(errno, "write_sector: Error seeking");
-                }
-                if (write(fd, &csum, 1) < 0)
-                {
-                    error_exit(errno, "write_sector: Error on write");
-                }
-                */
-                fileData[csum_offset] = (byte)csum;
-            }
-        }
 
 
         //
@@ -1410,7 +1157,7 @@ namespace altair_disk_manager
                     char_count++;
                     // If we have a file filename (excluding ext), but not found a dot 
                     // then add a dot and ignore everything up until the next dot 
-                    if (char_count == FILENAME_LEN && !found_dot)
+                    if (char_count == raw_dir_entry.FILENAME_LEN && !found_dot)
                     {
                         // make sure filename contains a separator 
                         out_char += '.';
@@ -1423,12 +1170,12 @@ namespace altair_disk_manager
                         while (in_char_index < in_char.Length && in_char[in_char_index] != '.')
                             in_char_index++;
                     }
-                    if (char_count == FULL_FILENAME_LEN - 1)
+                    if (char_count == raw_dir_entry.FULL_FILENAME_LEN - 1)
                     {
                         // otherwise end of filename. done 
                         break;
                     }
-                    if (found_dot && ext_count++ == TYPE_LEN)
+                    if (found_dot && ext_count++ == raw_dir_entry.TYPE_LEN)
                     {
                         // max extension length reached 
                         break;
@@ -1466,22 +1213,21 @@ namespace altair_disk_manager
         }
         */
 
-        // Set the allocation number in the raw directory entry
-        // For <=256 total allocs, this is set in the first 8 entries of the allocation array
-        // Otherwise each entry in the allocation array is set in pairs of low byte, high byte
 
-        void set_raw_allocation(raw_dir_entry entry, int entry_nr, int alloc)
+
+
+        public void NewImage(Disk_Type.disk_format _diskImageSize)
         {
-            if (_disk_type.disk_total_allocs() <= 256)
-            {
-                entry.allocation[entry_nr] = (byte)alloc;
-            }
-            else
-            {
-                entry.allocation[entry_nr * 2] = (byte)(alloc & 0xff);
-                entry.allocation[entry_nr * 2 + 1] = (byte)((alloc >> 8) & 0xff);
-            }
+
+            _disk_type = Disk_Type.disk_set_type(Disk_Type.disk_get_type(_diskImageSize));
+
+            _disk_type.disk_format_disk();
+
+            // Initial allocation table 
+            for (int i = 0; i < _disk_type.da; ++i)
+                alloc_table[i] = 1;
         }
+
 
         /*
         public void do_main()

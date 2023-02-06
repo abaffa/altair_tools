@@ -24,7 +24,7 @@ namespace altair_disk_manager.altair_disk_image
             70,71,72,73,74,75,76,77,78,79};
 
 
-        public const string name_type = "FDD_8IN_SIMH";
+        public const string name_type = "SIMH_FDD_8IN";
         public const int size = 0x0010fdc0;        
 
         /* Standard 8" floppy drive */
@@ -68,59 +68,20 @@ namespace altair_disk_manager.altair_disk_image
         * This needs to format the raw disk sectors.
         */
         //void mits8in_format_disk(int fd)
-        public override void format_function(int fd)
+        public override void format_function()
         {
-            byte[] sector_data = new byte[AltairDiskImage.MAX_SECT_SIZE];
+            reset_sector_buffer();
 
+
+            fileData = new byte[size];
 
             sector_data = Enumerable.Repeat((byte)0xe5, disk_sector_len()).ToArray();
 
-            sector_data[1] = 0x00;
-            sector_data[2] = 0x01;
-
-            /* Stop byte = 0xff */
-            sector_data[disk_off_stop(0)] = 0xff;
-
-            /* From zero byte to end of sector must be set to 0x00 */
-            Buffer.BlockCopy(sector_data, disk_off_stop(0) + 1,
-                Enumerable.Repeat((byte)0x00, disk_sector_len() - disk_off_zero(0)).ToArray(),
-                0, disk_sector_len() - disk_off_zero(0));
-
             for (int track = 0; track < disk_num_tracks(); track++)
             {
-                if (track == 6)
-                {
-                    sector_data = Enumerable.Repeat((byte)0xe5, disk_sector_len()).ToArray();
-
-                    sector_data[2] = 0x01;
-                    sector_data[disk_off_stop(6)] = 0xff;
-                    sector_data[disk_off_zero(6)] = 0x00;
-
-                    Buffer.BlockCopy(sector_data, disk_off_stop(0) + 1,
-                        Enumerable.Repeat((byte)0x00, disk_sector_len() - disk_off_zero(6)).ToArray(),
-                        0, disk_sector_len() - disk_off_zero(6));
-                }
                 for (int sector = 0; sector < disk_sectors_per_track(); sector++)
                 {
-                    if (track < 6)
-                    {
-                        sector_data[disk_off_track_nr(0)] = (byte)(track | 0x80);
-                        sector_data[disk_off_csum(0)] = calc_checksum(sector_data, disk_off_data(0) + 1);
-                    }
-                    else
-                    {
-                        sector_data[disk_off_track_nr(6)] = (byte)(track | 0x80);
-                        sector_data[disk_off_sect_nr(6)] = (byte)((sector * 17) % 32);
-                        byte checksum = calc_checksum(sector_data, disk_off_data(6) + 1);
-                        checksum += sector_data[2];
-                        checksum += sector_data[3];
-                        checksum += sector_data[5];
-                        checksum += sector_data[6];
-                        sector_data[disk_off_csum(6)] = checksum;
-                    }
-
-                    //aqui
-                    //write_raw_sector(fd, track, sector + 1, &sector_data);
+                    write_raw_sector(track, sector + 1);
                 }
             }
         }

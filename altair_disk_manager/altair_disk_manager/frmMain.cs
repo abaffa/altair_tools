@@ -27,7 +27,7 @@ namespace altair_disk_manager
         private bool isRenaming = false;
         private DiskImage diskImage = new DiskImage();
         private AltairDiskImage diskImage2 = new AltairDiskImage();
-
+        Disk_Type.disk_format _diskImageSize = Disk_Type.disk_format.SIMH_FDD_8IN_FORMAT;
 
         private Dictionary<string, byte[]> clipboard = new Dictionary<string, byte[]>();
 
@@ -49,6 +49,7 @@ namespace altair_disk_manager
 
             openFileToolStripMenuItem.Enabled = false;
             deleteToolStripMenuItem1.Enabled = false;
+            saveImageToolStripMenuItem.Enabled = false;
 
             IniFile ini = new IniFile(System.Environment.CurrentDirectory + "\\" + "config.ini");
 
@@ -105,8 +106,27 @@ namespace altair_disk_manager
 
 
 
+            foreach (string n in Enum.GetNames(typeof(Disk_Type.disk_format)))
+            {
+                ToolStripMenuItem x = new ToolStripMenuItem(n);
+                x.Checked = false;
+                x.CheckState = CheckState.Unchecked;
+                x.Click += mBToolStripMenuItem_Click;
+
+                imageSizeToolStripMenuItem.DropDownItems.Add(x);
+
+            }
 
 
+            string disk_format = "";
+            try
+            {
+                disk_format = ini.IniReadValue("general", "disk_image_format");
+
+            }
+            catch { }
+
+            set_disk_format(disk_format);
 
         }
 
@@ -570,9 +590,13 @@ namespace altair_disk_manager
             //if (diskImage.ReadImageFile(fileName, toolStripProgressBar1))
             if (diskImage2.ReadImageFile(fileName, toolStripProgressBar1))
             {
+
+                
+                set_disk_format(diskImage2.GetDiskImageType().ToString());
+
                 selectedVol = -1;
                 current_filename = fileName;
-
+                saveImageToolStripMenuItem.Enabled = true;
                 cmd_ls();
 
                 return true;
@@ -597,11 +621,14 @@ namespace altair_disk_manager
 
                 if (readImageFile(filename))
                 {
+                    saveImageToolStripMenuItem.Enabled = true;
                     this.Text = "Altair Disk Manager " + filename;
                 }
                 else
                 {
                     current_filename = "";
+                    saveImageToolStripMenuItem.Enabled = false;
+
                     this.Text = "Altair Disk Manager (No File)";
                 }
 
@@ -990,11 +1017,75 @@ namespace altair_disk_manager
         private void newImageToolStripMenuItem_Click(object sender, EventArgs e)
         {
             selectedVol = -1;
-            diskImage.NewImage(diskImage.DiskImageFormat);
+
+            //diskImage.NewImage(diskImage.DiskImageFormat);
+
+            
+            diskImage2.NewImage(_diskImageSize);
+
             cmd_ls();
+
+            this.Text = "Altair Disk Manager (" + diskImage2.GetDisk().type + ")";
+
+            current_filename = "";
+            saveImageToolStripMenuItem.Enabled = false;
         }
 
 
+        private void mBToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            /*
+            mBToolStripMenuItem1.Checked = false;
+            mBToolStripMenuItem.Checked = true;
+            romWBWToolStripMenuItem.Checked = false;
+            diskImage.DiskImageFormat = DiskImageFormat._64MB_Searle;
+
+            newImageToolStripMenuItem.Text = "New Image(64MB)";
+
+            IniFile ini = new IniFile(System.Environment.CurrentDirectory + "\\" + "config.ini");
+            ini.IniWriteValue("general", "disk_image_size", "64");
+            */
+
+            set_disk_format(((ToolStripMenuItem)sender).Text);
+            
+        }
+
+        private void set_disk_format(String format_name)
+        {
+            // Disk_Type.disk_format myEnum = (Disk_Type.disk_format)Enum.Parse(typeof(Disk_Type.disk_format), format_name);
+
+            Disk_Type.disk_format myEnum = Disk_Type.disk_format.SIMH_FDD_8IN_FORMAT;
+
+
+                try
+            {
+                 myEnum = (Disk_Type.disk_format)Enum.Parse(typeof(Disk_Type.disk_format), format_name);
+            }
+            catch {
+                format_name = myEnum.ToString();
+            }
+
+            _diskImageSize = myEnum;
+
+            foreach (ToolStripMenuItem x in imageSizeToolStripMenuItem.DropDownItems)
+            {
+                if (x.Text == format_name)
+                {
+                    x.Checked = true;
+                    x.CheckState = CheckState.Checked;
+                }
+                else
+                {
+                    x.Checked = false;
+                    x.CheckState = CheckState.Unchecked;
+                }
+            }
+
+            newImageToolStripMenuItem.Text = "New Image(" + format_name + ")";
+
+            IniFile ini = new IniFile(System.Environment.CurrentDirectory + "\\" + "config.ini");
+            ini.IniWriteValue("general", "disk_image_format", format_name);
+        }
 
         private void editorToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -1465,9 +1556,7 @@ namespace altair_disk_manager
                     _selected_user = int.Parse(listView1.SelectedItems[0].SubItems[1].Text, System.Globalization.NumberStyles.HexNumber);
                     selectedUser = _selected_user;
                 }
-                catch (Exception ex)
-                {
-                }
+                catch { }
 
             }
             toolStripComboBox1.SelectedIndex = _selected_user;

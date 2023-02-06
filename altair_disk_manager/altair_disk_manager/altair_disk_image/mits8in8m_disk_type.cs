@@ -11,7 +11,7 @@ namespace altair_disk_manager.altair_disk_image
     public class mits8in8m_disk_type : Disk_Type
     {
 
-        public const string name_type = "FDD_8IN_8MB";
+        public const string name_type = "MITS_FDD_8IN_8MB";
         public const int size = 8978432;
 
         public mits8in8m_disk_type()
@@ -54,12 +54,11 @@ namespace altair_disk_manager.altair_disk_image
         * This needs to format the raw disk sectors.
         */
         //void mits8in_format_disk(int fd)
-        public override void format_function(int fd)
+        public override void format_function()
         {
-            byte[] sector_data = new byte[AltairDiskImage.MAX_SECT_SIZE];
+            reset_sector_buffer();
 
-
-            sector_data = Enumerable.Repeat((byte)0xe5, disk_sector_len()).ToArray();
+            fileData = new byte[size];
 
             sector_data[1] = 0x00;
             sector_data[2] = 0x01;
@@ -74,7 +73,8 @@ namespace altair_disk_manager.altair_disk_image
 
             for (int track = 0; track < disk_num_tracks(); track++)
             {
-                if (track == 6)
+                //if (track == 6)
+                if (track == 2)
                 {
                     sector_data = Enumerable.Repeat((byte)0xe5, disk_sector_len()).ToArray();
 
@@ -88,7 +88,8 @@ namespace altair_disk_manager.altair_disk_image
                 }
                 for (int sector = 0; sector < disk_sectors_per_track(); sector++)
                 {
-                    if (track < 6)
+                    //if (track < 6)
+                    if (track < 2)
                     {
                         sector_data[disk_off_track_nr(0)] = (byte)(track | 0x80);
                         sector_data[disk_off_csum(0)] = calc_checksum(sector_data, disk_off_data(0) + 1);
@@ -105,8 +106,7 @@ namespace altair_disk_manager.altair_disk_image
                         sector_data[disk_off_csum(6)] = checksum;
                     }
 
-                    //aqui
-                    //write_raw_sector(fd, track, sector + 1, &sector_data);
+                    write_raw_sector(track, sector + 1);
                 }
             }
         }

@@ -60,9 +60,11 @@ namespace altair_disk_manager.altair_disk_image
         //Create a newly formatted disk / format an existing disk.
         //The standard function which fills every byte with 0xE5
         //void format_disk(int fd)
-        public override void format_function(int fd)
+        public override void format_function()
         {
-            byte[] sector_data = new byte[AltairDiskImage.MAX_SECT_SIZE];
+            reset_sector_buffer();
+
+            fileData = new byte[size];
 
             sector_data = Enumerable.Repeat((byte)0xe5, disk_sector_len()).ToArray();
 
@@ -70,8 +72,7 @@ namespace altair_disk_manager.altair_disk_image
             {
                 for (int sector = 0; sector < disk_sectors_per_track(); sector++)
                 {
-                    //aqui
-                    //write_raw_sector(fd, track, sector + 1, &sector_data);
+                    write_raw_sector(track, sector + 1);
                 }
             }
 

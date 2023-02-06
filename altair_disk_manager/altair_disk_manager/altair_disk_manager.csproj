@@ -55,11 +55,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AltairDiskImage.cs" />
+    <Compile Include="altair_disk_image\cpm_disk_entry.cs" />
     <Compile Include="altair_disk_image\disk_offsets.cs" />
     <Compile Include="altair_disk_image\disk_type.cs" />
     <Compile Include="altair_disk_image\fdd15mb_disk_type.cs" />
     <Compile Include="altair_disk_image\mits5mbhdd_disk_type.cs" />
     <Compile Include="altair_disk_image\fdd1mb_simh_disk_type.cs" />
+    <Compile Include="altair_disk_image\raw_dir_entry.cs" />
     <Compile Include="altair_disk_image\tarbellfdd_disk_type.cs" />
     <Compile Include="altair_disk_image\mits8in8m_disk_type.cs" />
     <Compile Include="altair_disk_image\mits5mbhdd1024_disk_type.cs" />
