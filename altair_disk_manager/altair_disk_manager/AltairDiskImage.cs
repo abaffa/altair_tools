@@ -147,6 +147,7 @@ namespace altair_disk_manager
 
                     _disk_type.fileData = fileData;
 
+                    alloc_table = new byte[MAX_ALLOCS];
                     // Initial allocation table 
                     for (int i = 0; i < _disk_type.da; ++i)
                         alloc_table[i] = 1;
@@ -357,6 +358,7 @@ namespace altair_disk_manager
 
         byte[] copy_from_cpm(cpm_dir_entry dir_entry, int text_mode)
         {
+            int xxx = 0;
             List<byte> file_data = new List<byte>();
 
             _disk_type.reset_sector_buffer();
@@ -365,7 +367,6 @@ namespace altair_disk_manager
             {
                 int num_records = ((_disk_type.disk_recs_per_extent() > 128) && (dir_entry.num_allocs > 4)) ?
                                     128 + dir_entry.num_records : dir_entry.num_records;
-
                 for (int recnr = 0; recnr < num_records; recnr++)
                 {
                     int alloc = dir_entry.allocation[recnr / _disk_type.disk_recs_per_alloc()];
@@ -404,11 +405,16 @@ namespace altair_disk_manager
                         }
                     }
 
-                    if (recnr <= num_records - 1)
-                        // write out current sector 
-                        for (int j = 0; j < data_len; j++)
-                            file_data.Add(_disk_type.sector_data[j]);
+                    // write out current sector 
+                    for (int j = 0; j < data_len; j++)
+                    {
+                        file_data.Add(_disk_type.sector_data[j]);
+                        xxx++;
+                    }
                 }
+
+
+                dir_entry.raw_entry.debug();
                 dir_entry = dir_entry.next_entry;
             }
 
@@ -480,7 +486,7 @@ namespace altair_disk_manager
                         found_dot = true;
                     int result = Char.ToUpper(s1[i1]) - Char.ToUpper(s2[i2]);
                     // If chars are not equal, return not equal 
-                    if (result > 0)
+                    if (result != 0)
                         return result;
                 }
                 i1++;
@@ -716,7 +722,7 @@ namespace altair_disk_manager
 
                     sorted_dir_table[index] = entry;
 
-                    if (entry.raw_entry.user <= raw_dir_entry.MAX_USER)
+                    if (entry.raw_entry.user >= 0 && entry.raw_entry.user <= raw_dir_entry.MAX_USER)
                     {
                         raw_to_cpmdir(entry);
 
@@ -901,9 +907,9 @@ namespace altair_disk_manager
             cpm_dir_entry dir_entry = null;
 
             // Fill the sector with Ctrl-Z (EOF) in case not fully filled by read from host
-            Buffer.BlockCopy(Enumerable.Repeat((byte)0x1a, _disk_type.disk_data_sector_len()).ToArray(), 0,
+            Buffer.BlockCopy(Enumerable.Repeat(_disk_type._eof, _disk_type.disk_data_sector_len()).ToArray(), 0,
                 _disk_type.sector_data, 0, _disk_type.disk_data_sector_len());
-
+            
             int src_offset = 0;
 
             //while ((nbytes = read(host_fd, &sector_data, disk_data_sector_len())) > 0)
@@ -914,7 +920,7 @@ namespace altair_disk_manager
                 Buffer.BlockCopy(data, src_offset,
                 _disk_type.sector_data, 0, current_len);
 
-                src_offset += _disk_type.disk_data_sector_len();
+                src_offset += current_len; // _disk_type.disk_data_sector_len();
 
                 // Is this a new Extent (i.e directory entry) ? 
                 if ((rec_nr % _disk_type.disk_recs_per_extent()) == 0)
@@ -922,8 +928,14 @@ namespace altair_disk_manager
                     // if there is a previous directory entry, write it to disk 
                     if (dir_entry != null)
                     {
+                        
+                        byte[] tmp = new byte[_disk_type.sector_data.Length];
+                        Array.Copy(_disk_type.sector_data, tmp, tmp.Length);
+
                         raw_to_cpmdir(dir_entry);
                         write_dir_entry(dir_entry);
+
+                        _disk_type.sector_data = tmp;
                     }
                     // Get new directory entry 
                     dir_entry = find_free_dir_entry();
@@ -963,7 +975,7 @@ namespace altair_disk_manager
 
                 _disk_type.write_sector(allocation, rec_nr);
 
-                Buffer.BlockCopy(Enumerable.Repeat((byte)0x1a, _disk_type.disk_data_sector_len()).ToArray(), 0,
+                Buffer.BlockCopy(Enumerable.Repeat(_disk_type._eof, _disk_type.disk_data_sector_len()).ToArray(), 0,
                     _disk_type.sector_data, 0, _disk_type.disk_data_sector_len());
 
                 rec_nr++;
@@ -1222,6 +1234,8 @@ namespace altair_disk_manager
             _disk_type = Disk_Type.disk_set_type(Disk_Type.disk_get_type(_diskImageSize));
 
             _disk_type.disk_format_disk();
+
+            alloc_table = new byte[MAX_ALLOCS];
 
             // Initial allocation table 
             for (int i = 0; i < _disk_type.da; ++i)

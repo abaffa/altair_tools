@@ -47,6 +47,9 @@ namespace altair_disk_manager.altair_disk_image
             offsets = new disk_offsets[2]{
                 new disk_offsets(0, 254,  3,  -1, -1, -1, -1, -1, -1),
                   new disk_offsets(-1, -1, 0, -1, -1, -1, -1, -1, -1)};
+
+            _eof = 0x00;
+
         }
 
         //int mits8in_skew_function(int track, int logical_sector)

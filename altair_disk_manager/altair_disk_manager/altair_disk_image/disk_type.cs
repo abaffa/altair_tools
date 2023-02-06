@@ -23,6 +23,8 @@ namespace altair_disk_manager.altair_disk_image
         public int[] skew_table;        /* Pointer to the sector skew table */
         public disk_offsets[] offsets;      /* Raw sector offsets for MITS 8" controller */
 
+        public byte _eof = 0x1a;
+
         int track;
         int sector;
         int offset;
@@ -484,7 +486,7 @@ namespace altair_disk_manager.altair_disk_image
                 error_exit(errno, "write_sector: Error on write");
             }
             */
-
+         
             Buffer.BlockCopy(sector_data, 0,
                     fileData, data_offset,
                     disk_data_sector_len());

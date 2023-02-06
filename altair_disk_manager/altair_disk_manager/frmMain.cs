@@ -591,7 +591,7 @@ namespace altair_disk_manager
             if (diskImage2.ReadImageFile(fileName, toolStripProgressBar1))
             {
 
-                
+
                 set_disk_format(diskImage2.GetDiskImageType().ToString());
 
                 selectedVol = -1;
@@ -1020,7 +1020,7 @@ namespace altair_disk_manager
 
             //diskImage.NewImage(diskImage.DiskImageFormat);
 
-            
+
             diskImage2.NewImage(_diskImageSize);
 
             cmd_ls();
@@ -1047,7 +1047,7 @@ namespace altair_disk_manager
             */
 
             set_disk_format(((ToolStripMenuItem)sender).Text);
-            
+
         }
 
         private void set_disk_format(String format_name)
@@ -1057,11 +1057,12 @@ namespace altair_disk_manager
             Disk_Type.disk_format myEnum = Disk_Type.disk_format.SIMH_FDD_8IN_FORMAT;
 
 
-                try
+            try
             {
-                 myEnum = (Disk_Type.disk_format)Enum.Parse(typeof(Disk_Type.disk_format), format_name);
+                myEnum = (Disk_Type.disk_format)Enum.Parse(typeof(Disk_Type.disk_format), format_name);
             }
-            catch {
+            catch
+            {
                 format_name = myEnum.ToString();
             }
 
@@ -1398,11 +1399,13 @@ namespace altair_disk_manager
                     {
                         //byte[] data = diskImage.Disk.GetFile((string)lvi.Tag);
                         byte[] data = diskImage2.GetFile((string)lvi.Text);
+                        if (data != null)
+                        {
+                            String filename = lvi.Text;
 
-                        String filename = lvi.Text;
-
-                        File.WriteAllBytes(folderBrowserDialog1.SelectedPath + "\\" + filename, data);
-                        //MessageBox.Show("FileS, "Save Media", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            File.WriteAllBytes(folderBrowserDialog1.SelectedPath + "\\" + filename, data);
+                            //MessageBox.Show("FileS, "Save Media", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
                     }
                 }
             }
